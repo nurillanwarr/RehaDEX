@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background: #f8fafc; /* Memaksa background terang (slate-50) */
+  color: #1f2937; /* Memaksa teks gelap (gray-800) */
+}
