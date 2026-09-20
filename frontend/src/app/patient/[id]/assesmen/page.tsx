@@ -30,7 +30,7 @@ export default function AssesmenPage({ params }: { params: { id: string } }) {
           </select>
         </div>
         
-        <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tekanan Darah (mmHg)</label>
             <input type="text" placeholder="120/80" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:border-blue-500" />

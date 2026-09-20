@@ -40,30 +40,32 @@ export default function Home() {
         <div className="px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-800">Daftar Pasien Terakhir</h2>
         </div>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-gray-50 text-gray-600 text-sm">
-              <th className="py-3 px-6 font-medium">ID</th>
-              <th className="py-3 px-6 font-medium">Nama</th>
-              <th className="py-3 px-6 font-medium">Diagnosis</th>
-              <th className="py-3 px-6 font-medium text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 text-gray-700">
-            {patients.map(patient => (
-              <tr key={patient.id} className="hover:bg-gray-50 transition">
-                <td className="py-3 px-6">{patient.id}</td>
-                <td className="py-3 px-6 font-medium text-blue-900">{patient.name}</td>
-                <td className="py-3 px-6">{patient.diagnosis}</td>
-                <td className="py-3 px-6 text-right">
-                  <Link href={`/patient/${patient.id}`} className="text-blue-600 hover:underline">
-                    Lihat Profil &rarr;
-                  </Link>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[600px]">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600 text-sm">
+                <th className="py-3 px-6 font-medium">ID</th>
+                <th className="py-3 px-6 font-medium">Nama</th>
+                <th className="py-3 px-6 font-medium">Diagnosis</th>
+                <th className="py-3 px-6 font-medium text-right">Aksi</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-gray-700">
+              {patients.map(patient => (
+                <tr key={patient.id} className="hover:bg-gray-50 transition">
+                  <td className="py-3 px-6">{patient.id}</td>
+                  <td className="py-3 px-6 font-medium text-blue-900">{patient.name}</td>
+                  <td className="py-3 px-6">{patient.diagnosis}</td>
+                  <td className="py-3 px-6 text-right">
+                    <Link href={`/patient/${patient.id}`} className="text-blue-600 hover:underline whitespace-nowrap">
+                      Lihat Profil &rarr;
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

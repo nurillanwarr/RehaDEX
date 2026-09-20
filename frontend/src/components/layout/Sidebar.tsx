@@ -2,9 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User, Activity, FileText, Settings, LogOut, FilePlus, Home } from 'lucide-react';
+import { User, Activity, FileText, Settings, LogOut, FilePlus, Home, X } from 'lucide-react';
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const navItemClass = (path: string) => {
@@ -22,13 +26,20 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-[280px] bg-white border-r border-gray-200 min-h-screen flex flex-col shadow-[2px_0_10px_rgba(0,0,0,0.02)] z-10">
+    <div className="w-[280px] bg-white border-r border-gray-200 h-screen flex flex-col shadow-[2px_0_10px_rgba(0,0,0,0.02)] z-10">
       {/* Logo Area */}
-      <div className="flex items-center px-6 py-6 mb-2">
-        <div className="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center mr-3 shadow-sm border-2 border-blue-900">
-          <div className="w-4 h-4 bg-blue-900 rounded-sm rotate-45"></div>
+      <div className="flex items-center justify-between px-6 py-6 mb-2">
+        <div className="flex items-center">
+          <div className="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center mr-3 shadow-sm border-2 border-blue-900">
+            <div className="w-4 h-4 bg-blue-900 rounded-sm rotate-45"></div>
+          </div>
+          <span className="font-bold text-xl text-[#1e293b] tracking-wide">FISIO<span className="text-[#4375ff]">TERAPI</span></span>
         </div>
-        <span className="font-bold text-xl text-[#1e293b] tracking-wide">FISIO<span className="text-[#4375ff]">TERAPI</span></span>
+        {onClose && (
+          <button onClick={onClose} className="md:hidden text-gray-500 hover:text-gray-800">
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4 scrollbar-thin">

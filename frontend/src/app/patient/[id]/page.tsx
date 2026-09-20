@@ -49,24 +49,26 @@ export default function PatientProfile({ params }: { params: { id: string } }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-700 mb-4">Tren Skor Fungsional</h3>
-          <table className="w-full text-left border-collapse mt-4">
-            <thead>
-              <tr className="bg-gray-50 text-gray-600 text-sm">
-                <th className="py-2 px-4 font-medium">Bulan</th>
-                <th className="py-2 px-4 font-medium">Skor</th>
-                <th className="py-2 px-4 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {funScores.map((item, idx) => (
-                <tr key={idx}>
-                  <td className="py-2 px-4">{item.date}</td>
-                  <td className="py-2 px-4 font-bold text-blue-800">{item.score} / 100</td>
-                  <td className="py-2 px-4 text-green-600 text-sm">{item.score > 60 ? 'Mandiri' : 'Bantuan'}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse mt-4 min-w-[300px]">
+              <thead>
+                <tr className="bg-gray-50 text-gray-600 text-sm">
+                  <th className="py-2 px-4 font-medium">Bulan</th>
+                  <th className="py-2 px-4 font-medium">Skor</th>
+                  <th className="py-2 px-4 font-medium">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {funScores.map((item, idx) => (
+                  <tr key={idx}>
+                    <td className="py-2 px-4">{item.date}</td>
+                    <td className="py-2 px-4 font-bold text-blue-800">{item.score} / 100</td>
+                    <td className="py-2 px-4 text-green-600 text-sm whitespace-nowrap">{item.score > 60 ? 'Mandiri' : 'Bantuan'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
         
         {/* Grafik 20x Input IoT yang sudah dirangkum per bulan */}
