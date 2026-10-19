@@ -1,26 +1,42 @@
 import Link from 'next/link';
 import PerformanceChart from '@/components/charts/PerformanceChart';
-import { patients, iotPerformance, functionalScores } from '@/data/dummyData';
+import FingerPerformanceChart from '@/components/charts/FingerPerformanceChart';
+import { getPatientBundle } from '@/lib/patientData';
 import PageHeader from '@/components/layout/PageHeader';
 import { FileText } from 'lucide-react';
 
-export default function PatientProfile({ params }: { params: { id: string } }) {
-  const patient = patients.find(p => p.id === params.id) || patients[0];
-  const chartData = iotPerformance[patient.id] || [];
-  const funScores = functionalScores[patient.id] || [];
+export const dynamic = 'force-dynamic';
+
+export default async function PatientProfile({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { patient, monthly: chartData, scores: funScores, fingers, source } = await getPatientBundle(id);
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="RINCIAN DATA PASIEN" 
-        subtitle={`${patient.id} • ${patient.name}`} 
-        icon={<FileText size={24} />} 
+      <PageHeader
+        title="RINCIAN DATA PASIEN"
+        subtitle={`${patient.id} • ${patient.name}`}
+        icon={<FileText size={24} />}
       />
 
-      <div className="flex justify-end mb-4">
-        <Link href={`/patient/${patient.id}/diagnosa`} className="bg-[#12aca7] hover:bg-[#0e8a86] text-white px-5 py-2.5 rounded-lg shadow-sm transition font-medium">
-          Mulai Sesi Baru
-        </Link>
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <span className={`text-xs px-2.5 py-1 rounded-full ${source === 'supabase' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          Sumber data: {source === 'supabase' ? 'Supabase' : 'Data demo / Lokal'}
+        </span>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/patient/${patient.id}/mode?method=manual`}
+            className="bg-white border-2 border-[#12aca7] text-[#12aca7] hover:bg-teal-50 px-4 py-2 rounded-lg shadow-sm transition font-medium text-sm"
+          >
+            + Input Manual (Semua Jari)
+          </Link>
+          <Link
+            href={`/patient/${patient.id}/diagnosa`}
+            className="bg-[#12aca7] hover:bg-[#0e8a86] text-white px-5 py-2 rounded-lg shadow-sm transition font-medium text-sm"
+          >
+            Mulai Sesi Baru (Manual / Alat IoT)
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:flex-row gap-8">
@@ -70,12 +86,18 @@ export default function PatientProfile({ params }: { params: { id: string } }) {
             </table>
           </div>
         </div>
-        
+
         {/* Grafik 20x Input IoT yang sudah dirangkum per bulan */}
         <div className="col-span-1 md:col-span-1">
-           <PerformanceChart data={chartData} />
+          <PerformanceChart data={chartData} />
         </div>
       </div>
+
+      {/* Grafik performa per jari (R/L × Jari 1-5) - sesuai Video 2 */}
+      <FingerPerformanceChart
+        data={fingers}
+        defaultSide={patient.diagnosis.includes('Kiri') ? 'L' : 'R'}
+      />
     </div>
   );
 }

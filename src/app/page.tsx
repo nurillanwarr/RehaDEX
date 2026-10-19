@@ -1,9 +1,15 @@
 import Link from 'next/link';
-import { patients } from '@/data/dummyData';
+import { getPatientsList } from '@/lib/patientData';
 import PageHeader from '@/components/layout/PageHeader';
+import NewPatientModal from '@/components/interactive/NewPatientModal';
 import { LayoutDashboard } from 'lucide-react';
 
-export default function Home() {
+export const dynamic = 'force-dynamic';
+
+export default async function Home() {
+  const { patients, source } = await getPatientsList();
+  const nextCode = `STK-${String(patients.length + 1).padStart(3, '0')}`;
+
   return (
     <div className="space-y-6">
       <PageHeader 
@@ -12,10 +18,11 @@ export default function Home() {
         icon={<LayoutDashboard size={24} />} 
       />
 
-      <div className="flex justify-end">
-        <button className="bg-[#213e8a] hover:bg-[#1a306c] text-white px-5 py-2.5 rounded-lg shadow-sm transition font-medium flex items-center">
-          <span className="mr-2">+</span> Pasien Baru
-        </button>
+      <div className="flex flex-wrap justify-between items-center gap-3">
+        <span className={`text-xs px-2.5 py-1 rounded-full ${source === 'supabase' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          Sumber data: {source === 'supabase' ? 'Supabase' : 'Data demo / Lokal'}
+        </span>
+        <NewPatientModal nextCode={nextCode} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -75,6 +75,42 @@ export const iotPerformance: Record<string, PerformanceSummary[]> = {
   ]
 };
 
+// ===== Data Performa per Jari (sesuai Video 2) =====
+// Struktur: pasien -> sisi tangan (R/L) -> jari (1-5) -> daftar ringkasan per bulan
+export type HandSide = 'R' | 'L';
+export type FingerNo = 1 | 2 | 3 | 4 | 5;
+export type FingerPerformance = Record<HandSide, Record<FingerNo, PerformanceSummary[]>>;
+
+const MONTHS = ['Jul', 'Ags', 'Sep', 'Okt', 'Nov'];
+
+// Generator deterministik agar tampilan konsisten (tanpa Math.random)
+const buildFingerSeries = (baseFlex: number, baseExt: number, seed: number): PerformanceSummary[] =>
+  MONTHS.map((month, i) => {
+    const dip = i === 2 ? -3 : 0; // penurunan kecil di tengah, seperti sketsa video
+    const wobble = ((seed * (i + 3)) % 5) * 0.4;
+    return {
+      month,
+      avgFlexion: +(baseFlex + i * 3.2 + dip + wobble).toFixed(1),
+      avgExtension: +(baseExt + i * 2.1 + dip / 2 + wobble / 2).toFixed(1),
+    };
+  });
+
+const buildHand = (flex: number, ext: number, seedBase: number): Record<FingerNo, PerformanceSummary[]> => ({
+  1: buildFingerSeries(flex + 2, ext + 1, seedBase + 1),
+  2: buildFingerSeries(flex + 1, ext + 1.5, seedBase + 2),
+  3: buildFingerSeries(flex, ext, seedBase + 3),
+  4: buildFingerSeries(flex - 1.5, ext - 1, seedBase + 4),
+  5: buildFingerSeries(flex - 3, ext - 2, seedBase + 5),
+});
+
+export const fingerPerformance: Record<string, FingerPerformance> = {
+  // Hemiparese kanan -> tangan kanan lebih lemah
+  'STK-001': { R: buildHand(8, 5, 1), L: buildHand(20, 15, 7) },
+  // Hemiparese kiri -> tangan kiri lebih lemah
+  'STK-002': { R: buildHand(22, 16, 3), L: buildHand(10, 6, 9) },
+  'STK-003': { R: buildHand(6, 3, 5), L: buildHand(19, 14, 2) },
+};
+
 // Contoh data mentah 1 sesi (20 pengukuran) untuk STK-001
 export const generateSessionMeasurements = (sessionId: string, baseFlex: number, baseExt: number): IotMeasurement[] => {
   const measurements: IotMeasurement[] = [];

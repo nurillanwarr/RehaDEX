@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (amankan seluruh file .env yang berisi kunci rahasia)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +40,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# file referensi lokal (PDF & Video tidak di-push ke GitHub)
+*.pdf
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# folder lokal yang belum dipakai di deployment frontend Vercel
+/backend/
+/iot/
+/docs/
+/config/
+

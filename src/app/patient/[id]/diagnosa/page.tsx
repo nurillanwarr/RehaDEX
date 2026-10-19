@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BodySilhouette from '@/components/interactive/BodySilhouette';
 
-export default function DiagnosaPage({ params }: { params: { id: string } }) {
+export default function DiagnosaPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
 
   const handleNext = () => {
     if (selectedRegion) {
-      router.push(`/patient/${params.id}/assesmen?region=${selectedRegion}`);
+      router.push(`/patient/${id}/assesmen?region=${selectedRegion}`);
     }
   };
 
