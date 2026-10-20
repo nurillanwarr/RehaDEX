@@ -10,7 +10,7 @@ export default function NewPatientModal({ nextCode }: { nextCode: string }) {
   const [name, setName] = useState('');
   const [age, setAge] = useState('60');
   const [sex, setSex] = useState<'L' | 'P'>('L');
-  const [affectedSide, setAffectedSide] = useState<'R' | 'L'>('R');
+  const [affectedSide, setAffectedSide] = useState<'R' | 'L' | 'RL'>('R');
   const [notes, setNotes] = useState('Fase pemulihan awal.');
   const [saving, setSaving] = useState(false);
 
@@ -24,7 +24,9 @@ export default function NewPatientModal({ nextCode }: { nextCode: string }) {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const diagnosis = `Stroke (Hemiparese ${affectedSide === 'L' ? 'Kiri' : 'Kanan'})`;
+      const sideLabel =
+        affectedSide === 'RL' ? 'Kanan & Kiri' : affectedSide === 'L' ? 'Kiri' : 'Kanan';
+      const diagnosis = `Stroke (Hemiparese ${sideLabel})`;
       const res = await fetch('/api/manual-entry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -34,7 +36,7 @@ export default function NewPatientModal({ nextCode }: { nextCode: string }) {
           name,
           age: Number(age),
           sex,
-          affected_side: affectedSide,
+          affected_side: affectedSide === 'L' ? 'L' : 'R',
           diagnosis,
           notes,
         }),
@@ -125,11 +127,12 @@ export default function NewPatientModal({ nextCode }: { nextCode: string }) {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Sisi Hemiparese</label>
                   <select
                     value={affectedSide}
-                    onChange={e => setAffectedSide(e.target.value as 'R' | 'L')}
+                    onChange={e => setAffectedSide(e.target.value as 'R' | 'L' | 'RL')}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="R">Kanan (R)</option>
                     <option value="L">Kiri (L)</option>
+                    <option value="RL">Keduanya (R &amp; L)</option>
                   </select>
                 </div>
               </div>

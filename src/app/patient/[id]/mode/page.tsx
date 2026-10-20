@@ -26,19 +26,6 @@ const FINGER_LABELS: Record<FingerNo, string> = {
   5: 'Jari 5 (Kelingking)',
 };
 
-// Urutan tahapan sesuai instruksi:
-// Tangan Kanan: G1 Fleksi -> G2 Fleksi -> G1 Ekstensi -> G2 Ekstensi -> pindah Tangan Kiri
-const SEQUENCE_STEPS: { side: HandSide; movement: MovementNo; type: MeasureType; title: string }[] = [
-  { side: 'R', movement: 1, type: 'fleksi', title: 'Kanan • Gerakan 1 • Fleksi' },
-  { side: 'R', movement: 2, type: 'fleksi', title: 'Kanan • Gerakan 2 • Fleksi' },
-  { side: 'R', movement: 1, type: 'ekstensi', title: 'Kanan • Gerakan 1 • Ekstensi' },
-  { side: 'R', movement: 2, type: 'ekstensi', title: 'Kanan • Gerakan 2 • Ekstensi' },
-  { side: 'L', movement: 1, type: 'fleksi', title: 'Kiri • Gerakan 1 • Fleksi' },
-  { side: 'L', movement: 2, type: 'fleksi', title: 'Kiri • Gerakan 2 • Fleksi' },
-  { side: 'L', movement: 1, type: 'ekstensi', title: 'Kiri • Gerakan 1 • Ekstensi' },
-  { side: 'L', movement: 2, type: 'ekstensi', title: 'Kiri • Gerakan 2 • Ekstensi' },
-];
-
 type FingerMatrix = Record<
   HandSide,
   Record<
@@ -77,18 +64,23 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
     initialMethod === 'manual' ? 'MANUAL_ALL_FINGERS' : 'MAIN_MODE'
   );
 
-  // State untuk alur Otomatis (Alat IoT)
-  const [iotSelection, setIotSelection] = useState({
+  // State untuk alur Otomatis (Alat IoT) — bisa pilih 1 atau 2 sisi tangan
+  const [iotSelection, setIotSelection] = useState<{
+    pengukuranType: string;
+    movementNo: MovementNo;
+    sides: HandSide[];
+    fingerNo: number;
+  }>({
     pengukuranType: 'Fleksi',
-    movementNo: 1 as MovementNo,
-    side: 'Kanan',
+    movementNo: 1,
+    sides: ['R'],
     fingerNo: 1,
   });
 
-  // State untuk alur Manual (Gerakan 1 & 2, Tangan Kanan/Kiri, Fleksi/Ekstensi)
+  // State untuk alur Manual — bisa pilih 1 sisi atau kedua sisi tangan sekaligus (['R'], ['L'], atau ['R', 'L'])
   const today = new Date().toISOString().slice(0, 10);
   const [movementNo, setMovementNo] = useState<MovementNo>(1);
-  const [manualSide, setManualSide] = useState<HandSide>('R');
+  const [selectedSides, setSelectedSides] = useState<HandSide[]>(['R']);
   const [measureType, setMeasureType] = useState<MeasureType>('fleksi');
   const [measuredDate, setMeasuredDate] = useState(today);
   const [matrix, setMatrix] = useState<FingerMatrix>(createInitialMatrix);
@@ -105,36 +97,48 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
     router.push(`/patient/${id}`);
   };
 
+  // Toggle pilih sisi tangan (bisa pilih 1 atau dua-duanya sekaligus)
+  const toggleManualSide = (side: HandSide) => {
+    setSelectedSides(prev => {
+      if (prev.includes(side)) {
+        // Jangan biarkan kosong sama sekali, minimal 1 terpilih
+        return prev.length > 1 ? prev.filter(s => s !== side) : prev;
+      }
+      // Urutkan R dulu baru L
+      const next = [...prev, side];
+      return (['R', 'L'] as HandSide[]).filter(s => next.includes(s));
+    });
+  };
+
+  const toggleIotSide = (side: HandSide) => {
+    setIotSelection(prev => {
+      const exists = prev.sides.includes(side);
+      const nextSides = exists
+        ? prev.sides.length > 1
+          ? prev.sides.filter(s => s !== side)
+          : prev.sides
+        : (['R', 'L'] as HandSide[]).filter(s => [...prev.sides, side].includes(s));
+      return { ...prev, sides: nextSides };
+    });
+  };
+
   const activeFieldKey = `${measureType}_g${movementNo}` as
     | 'fleksi_g1'
     | 'fleksi_g2'
     | 'ekstensi_g1'
     | 'ekstensi_g2';
 
-  const updateCurrentFingerValue = (fNo: FingerNo, val: string) => {
+  const updateFingerValue = (side: HandSide, fNo: FingerNo, val: string) => {
     setMatrix(prev => ({
       ...prev,
-      [manualSide]: {
-        ...prev[manualSide],
+      [side]: {
+        ...prev[side],
         [fNo]: {
-          ...prev[manualSide][fNo],
+          ...prev[side][fNo],
           [activeFieldKey]: val,
         },
       },
     }));
-  };
-
-  // Cari indeks urutan saat ini untuk tombol "Tahap Berikutnya"
-  const currentSeqIdx = SEQUENCE_STEPS.findIndex(
-    s => s.side === manualSide && s.movement === movementNo && s.type === measureType
-  );
-
-  const goToSequenceStep = (idx: number) => {
-    const target = SEQUENCE_STEPS[idx];
-    if (!target) return;
-    setManualSide(target.side);
-    setMovementNo(target.movement);
-    setMeasureType(target.type);
   };
 
   const handleSaveAllFingers = async (e: React.FormEvent) => {
@@ -152,7 +156,8 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
         ekstensi_g2: number;
       }[] = [];
 
-      (['R', 'L'] as HandSide[]).forEach(side => {
+      // Simpan sesuai sisi tangan yang dipilih (1 tangan atau kedua tangan sekaligus)
+      selectedSides.forEach(side => {
         ([1, 2, 3, 4, 5] as FingerNo[]).forEach(fNo => {
           const item = matrix[side][fNo];
           allFingersPayload.push({
@@ -172,7 +177,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
         body: JSON.stringify({
           action: 'add_all_fingers_measurement',
           patient_code: id,
-          hand_side: manualSide,
+          hand_side: selectedSides[0] || 'R',
           measured_date: measuredDate,
           heart_rate: parseFloat(heartRate),
           spo2: parseFloat(spo2),
@@ -185,7 +190,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
       const data = await res.json();
       if (data.ok) {
         setFeedback(
-          `Berhasil menyimpan data pengukuran ke ${
+          `Berhasil menyimpan data pengukuran (${selectedSides.map(s => (s === 'R' ? 'Kanan' : 'Kiri')).join(' & ')}) ke ${
             data.savedTo === 'supabase' ? 'Database Supabase' : 'Memori Lokal'
           }! Mengalihkan ke grafik...`
         );
@@ -200,6 +205,9 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
       setSaving(false);
     }
   };
+
+  const bothManualSelected = selectedSides.length === 2;
+  const bothIotSelected = iotSelection.sides.length === 2;
 
   return (
     <div className="max-w-4xl mx-auto bg-white p-5 sm:p-8 rounded-2xl shadow-sm border border-gray-100 min-h-[500px]">
@@ -255,7 +263,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
               </span>
               <h3 className="text-xl font-bold text-teal-900 mb-2">Input Manual (Semua Jari)</h3>
               <p className="text-gray-600 text-sm">
-                Pilih Gerakan 1 / Gerakan 2, Sisi Tangan, serta Fleksi / Ekstensi untuk Jari 1 s/d Jari 5, lalu simpan ke database.
+                Pilih Gerakan 1 / Gerakan 2, Sisi Tangan (bisa pilih 1 atau keduanya), serta Fleksi / Ekstensi untuk Jari 1 s/d Jari 5.
               </p>
             </button>
 
@@ -325,33 +333,46 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
               </div>
             </div>
 
-            {/* 2. PILIH SISI TANGAN */}
+            {/* 2. PILIH SISI TANGAN (BISA PILIH 1 ATAU KEDUANYA SEKALIGUS) */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                2. Pilih Sisi Tangan yang Diukur
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  2. Pilih Sisi Tangan yang Diukur (Bisa Pilih 1 atau Keduanya)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSides(['R', 'L'])}
+                  className={`text-xs px-2.5 py-1 rounded-full font-semibold border transition ${
+                    bothManualSelected
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-blue-800 border-blue-300 hover:bg-blue-50'
+                  }`}
+                >
+                  {bothManualSelected ? '✓ Kedua Tangan Aktif (R & L)' : '+ Pilih Kedua Tangan (R & L)'}
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setManualSide('R')}
+                  onClick={() => toggleManualSide('R')}
                   className={`py-2.5 px-4 rounded-lg font-bold text-sm border-2 transition ${
-                    manualSide === 'R'
+                    selectedSides.includes('R')
                       ? 'bg-[#1e3a8a] border-[#1e3a8a] text-white shadow'
                       : 'bg-white border-gray-300 text-gray-700 hover:border-[#1e3a8a]'
                   }`}
                 >
-                  Tangan Kanan (R)
+                  {selectedSides.includes('R') ? '✓ ' : ''}Tangan Kanan (R)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setManualSide('L')}
+                  onClick={() => toggleManualSide('L')}
                   className={`py-2.5 px-4 rounded-lg font-bold text-sm border-2 transition ${
-                    manualSide === 'L'
+                    selectedSides.includes('L')
                       ? 'bg-[#1e3a8a] border-[#1e3a8a] text-white shadow'
                       : 'bg-white border-gray-300 text-gray-700 hover:border-[#1e3a8a]'
                   }`}
                 >
-                  Tangan Kiri (L)
+                  {selectedSides.includes('L') ? '✓ ' : ''}Tangan Kiri (L)
                 </button>
               </div>
             </div>
@@ -402,85 +423,65 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             </div>
           </div>
 
-          {/* 5. TABEL INPUT KELIMA JARI (Tanpa tulisan rata-rata, pas di layar HP) */}
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h3 className="text-base font-bold text-gray-800">
-                5. Input Nilai Kekuatan Kelima Jari — Tangan{' '}
-                {manualSide === 'R' ? 'Kanan (R)' : 'Kiri (L)'} •{' '}
-                <span className="text-[#12aca7]">Gerakan {movementNo}</span> •{' '}
-                <span className={measureType === 'fleksi' ? 'text-red-600' : 'text-lime-700'}>
-                  {measureType === 'fleksi' ? 'Fleksi' : 'Ekstensi'}
-                </span>
-              </h3>
-              <span className="text-xs text-gray-500">
-                Tahap {currentSeqIdx + 1} dari {SEQUENCE_STEPS.length}
+          {/* 5. TABEL INPUT KELIMA JARI (Menampilkan 1 atau 2 Tangan sesuai yang dipilih) */}
+          <div className="space-y-4">
+            <h3 className="text-base font-bold text-gray-800">
+              5. Input Nilai Kekuatan Kelima Jari •{' '}
+              <span className="text-[#12aca7]">Gerakan {movementNo}</span> •{' '}
+              <span className={measureType === 'fleksi' ? 'text-red-600' : 'text-lime-700'}>
+                {measureType === 'fleksi' ? 'Fleksi' : 'Ekstensi'}
               </span>
-            </div>
+            </h3>
 
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-700 text-xs uppercase tracking-wider border-b border-gray-200">
-                    <th className="py-3 px-4 font-semibold">Jari Tangan</th>
-                    <th
-                      className={`py-3 px-4 font-semibold ${
-                        measureType === 'fleksi' ? 'text-red-700' : 'text-lime-700'
-                      }`}
-                    >
-                      Nilai {measureType === 'fleksi' ? 'Fleksi (Merah)' : 'Ekstensi (Hijau)'} — Gerakan {movementNo}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-sm">
-                  {([1, 2, 3, 4, 5] as FingerNo[]).map(fNo => (
-                    <tr key={fNo} className="hover:bg-gray-50/80">
-                      <td className="py-3 px-4 font-semibold text-gray-800">
-                        {FINGER_LABELS[fNo]}
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={matrix[manualSide][fNo][activeFieldKey]}
-                          onChange={e => updateCurrentFingerValue(fNo, e.target.value)}
-                          placeholder="0.0"
-                          className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none ${
-                            measureType === 'fleksi' ? 'focus:border-red-500' : 'focus:border-lime-600'
+            <div className={`grid grid-cols-1 ${bothManualSelected ? 'lg:grid-cols-2' : ''} gap-4`}>
+              {selectedSides.map(side => (
+                <div key={side} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="bg-[#1e3a8a] text-white px-4 py-2.5 text-sm font-bold flex items-center justify-between">
+                    <span>Tangan {side === 'R' ? 'Kanan (R)' : 'Kiri (L)'}</span>
+                    <span className="text-xs font-normal text-blue-100">
+                      Gerakan {movementNo} • {measureType === 'fleksi' ? 'Fleksi' : 'Ekstensi'}
+                    </span>
+                  </div>
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 text-gray-700 text-xs uppercase tracking-wider border-b border-gray-200">
+                        <th className="py-2.5 px-4 font-semibold">Jari Tangan</th>
+                        <th
+                          className={`py-2.5 px-4 font-semibold ${
+                            measureType === 'fleksi' ? 'text-red-700' : 'text-lime-700'
                           }`}
-                          required
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Navigasi Urutan Tahap Gerakan */}
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 bg-blue-50/60 border border-blue-100 rounded-xl p-3">
-              <button
-                type="button"
-                disabled={currentSeqIdx <= 0}
-                onClick={() => goToSequenceStep(currentSeqIdx - 1)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-              >
-                &larr; Tahap Sebelumnya
-              </button>
-              <span className="text-xs text-blue-900 font-medium text-center">
-                {currentSeqIdx < SEQUENCE_STEPS.length - 1
-                  ? `Selanjutnya: ${SEQUENCE_STEPS[currentSeqIdx + 1].title}`
-                  : 'Semua tahap (Kanan & Kiri, Gerakan 1 & 2) selesai diisi!'}
-              </span>
-              {currentSeqIdx < SEQUENCE_STEPS.length - 1 && (
-                <button
-                  type="button"
-                  onClick={() => goToSequenceStep(currentSeqIdx + 1)}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#1e3a8a] text-white hover:bg-blue-800 transition"
-                >
-                  Lanjut: {SEQUENCE_STEPS[currentSeqIdx + 1].title} &rarr;
-                </button>
-              )}
+                        >
+                          Nilai {measureType === 'fleksi' ? 'Fleksi (Merah)' : 'Ekstensi (Hijau)'}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-sm">
+                      {([1, 2, 3, 4, 5] as FingerNo[]).map(fNo => (
+                        <tr key={fNo} className="hover:bg-gray-50/80">
+                          <td className="py-2.5 px-4 font-semibold text-gray-800">
+                            {FINGER_LABELS[fNo]}
+                          </td>
+                          <td className="py-2 px-4">
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={matrix[side][fNo][activeFieldKey]}
+                              onChange={e => updateFingerValue(side, fNo, e.target.value)}
+                              placeholder="0.0"
+                              className={`w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none ${
+                                measureType === 'fleksi'
+                                  ? 'focus:border-red-500'
+                                  : 'focus:border-lime-600'
+                              }`}
+                              required
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -629,27 +630,54 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
           >
             &larr; Kembali
           </button>
-          <h2 className="text-lg font-semibold text-gray-700 text-center mb-6">
+          <h2 className="text-lg font-semibold text-gray-700 text-center mb-2">
             [Mode Alat IoT] Pilih Sisi Tangan
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <p className="text-xs text-gray-500 text-center mb-4">
+            Bisa pilih salah satu tangan atau kedua tangan sekaligus, lalu klik Lanjut.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
-              onClick={() => {
-                setIotSelection(prev => ({ ...prev, side: 'Kanan' }));
-                setStep('FINGER_SELECTION');
-              }}
-              className="bg-green-50 p-8 rounded-xl shadow-sm border-2 border-green-100 hover:border-green-500 transition text-center"
+              type="button"
+              onClick={() => toggleIotSide('R')}
+              className={`p-6 rounded-xl shadow-sm border-2 transition text-center font-bold ${
+                iotSelection.sides.includes('R')
+                  ? 'bg-green-600 border-green-600 text-white'
+                  : 'bg-green-50 border-green-100 text-green-800 hover:border-green-500'
+              }`}
             >
-              <h3 className="text-xl font-bold text-green-800">Kanan (R)</h3>
+              {iotSelection.sides.includes('R') ? '✓ ' : ''}Kanan (R)
             </button>
             <button
-              onClick={() => {
-                setIotSelection(prev => ({ ...prev, side: 'Kiri' }));
-                setStep('FINGER_SELECTION');
-              }}
-              className="bg-green-50 p-8 rounded-xl shadow-sm border-2 border-green-100 hover:border-green-500 transition text-center"
+              type="button"
+              onClick={() => toggleIotSide('L')}
+              className={`p-6 rounded-xl shadow-sm border-2 transition text-center font-bold ${
+                iotSelection.sides.includes('L')
+                  ? 'bg-green-600 border-green-600 text-white'
+                  : 'bg-green-50 border-green-100 text-green-800 hover:border-green-500'
+              }`}
             >
-              <h3 className="text-xl font-bold text-green-800">Kiri (L)</h3>
+              {iotSelection.sides.includes('L') ? '✓ ' : ''}Kiri (L)
+            </button>
+            <button
+              type="button"
+              onClick={() => setIotSelection(prev => ({ ...prev, sides: ['R', 'L'] }))}
+              className={`p-6 rounded-xl shadow-sm border-2 transition text-center font-bold ${
+                bothIotSelected
+                  ? 'bg-[#1e3a8a] border-[#1e3a8a] text-white'
+                  : 'bg-blue-50 border-blue-100 text-[#1e3a8a] hover:border-blue-500'
+              }`}
+            >
+              {bothIotSelected ? '✓ ' : ''}Kedua Tangan (R &amp; L)
+            </button>
+          </div>
+          <div className="flex justify-end pt-4">
+            <button
+              type="button"
+              onClick={() => setStep('FINGER_SELECTION')}
+              className="bg-[#1e3a8a] hover:bg-blue-800 text-white px-8 py-2.5 rounded-xl font-semibold shadow transition"
+            >
+              Lanjut Pilih Jari &rarr;
             </button>
           </div>
         </div>
@@ -664,7 +692,8 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             &larr; Kembali
           </button>
           <h2 className="text-lg font-semibold text-gray-700 text-center mb-6">
-            [Mode Alat IoT] Pilih Jari ({iotSelection.pengukuranType} • Gerakan {iotSelection.movementNo} • Tangan {iotSelection.side})
+            [Mode Alat IoT] Pilih Jari ({iotSelection.pengukuranType} • Gerakan {iotSelection.movementNo} • Tangan{' '}
+            {iotSelection.sides.map(s => (s === 'R' ? 'Kanan' : 'Kiri')).join(' & ')})
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[1, 2, 3, 4, 5].map(num => (
@@ -694,7 +723,8 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
           <p className="text-sm text-gray-600 max-w-lg mx-auto">
             Konfigurasi aktif: <strong>{iotSelection.pengukuranType}</strong> •{' '}
             <strong>Gerakan {iotSelection.movementNo}</strong> • Tangan{' '}
-            <strong>{iotSelection.side}</strong> • <strong>Jari {iotSelection.fingerNo}</strong>.
+            <strong>{iotSelection.sides.map(s => (s === 'R' ? 'Kanan' : 'Kiri')).join(' & ')}</strong> •{' '}
+            <strong>Jari {iotSelection.fingerNo}</strong>.
           </p>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 max-w-lg mx-auto text-xs text-amber-800">
             Karena alat IoT saat ini masih dalam tahap penyesuaian, Anda dapat beralih ke{' '}
