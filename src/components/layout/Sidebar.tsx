@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User, Activity, FileText, Settings, LogOut, FilePlus, Home, X } from 'lucide-react';
+import { User, Activity, FileText, LogOut, FilePlus, Home, X } from 'lucide-react';
 
 interface SidebarProps {
   onClose?: () => void;
@@ -10,18 +10,20 @@ interface SidebarProps {
 
 export default function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
+  const match = pathname.match(/^\/patient\/([^/]+)/);
+  const activePatientId = match ? match[1] : 'STK-001';
 
   const navItemClass = (path: string) => {
-    const isActive = pathname === path || (path !== '/' && pathname.startsWith(path));
+    const isActive = pathname === path;
     return `flex items-center space-x-3 px-4 py-2.5 rounded-xl transition ${
-      isActive 
-        ? 'bg-[#4375ff] text-white shadow-md' 
+      isActive
+        ? 'bg-[#4375ff] text-white shadow-md'
         : 'text-gray-600 hover:bg-gray-100 hover:text-blue-600'
     }`;
   };
 
   const iconColor = (path: string, defaultColor: string) => {
-    const isActive = pathname === path || (path !== '/' && pathname.startsWith(path));
+    const isActive = pathname === path;
     return isActive ? 'text-white' : defaultColor;
   };
 
@@ -33,7 +35,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <div className="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center mr-3 shadow-sm border-2 border-blue-900">
             <div className="w-4 h-4 bg-blue-900 rounded-sm rotate-45"></div>
           </div>
-          <span className="font-bold text-xl text-[#1e293b] tracking-wide">FISIO<span className="text-[#4375ff]">TERAPI</span></span>
+          <span className="font-bold text-xl text-[#1e293b] tracking-wide">
+            FISIO<span className="text-[#4375ff]">TERAPI</span>
+          </span>
         </div>
         {onClose && (
           <button onClick={onClose} className="md:hidden text-gray-500 hover:text-gray-800">
@@ -47,7 +51,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
         <div className="mb-6">
           <p className="px-4 text-xs font-bold text-gray-400 mb-3 tracking-wider">UTAMA</p>
           <div className="space-y-1">
-            <Link href="/" className={navItemClass('/')}>
+            <Link href="/" onClick={onClose} className={navItemClass('/')}>
               <Home size={18} className={iconColor('/', 'text-[#4375ff]')} />
               <span className="text-sm font-medium">Dashboard</span>
             </Link>
@@ -56,10 +60,16 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
         {/* Section 2 */}
         <div className="mb-6">
-          <p className="px-4 text-xs font-bold text-gray-400 mb-3 tracking-wider">DATA PASIEN</p>
+          <p className="px-4 text-xs font-bold text-gray-400 mb-3 tracking-wider">
+            DATA PASIEN ({activePatientId})
+          </p>
           <div className="space-y-1">
-            <Link href="/patient/STK-001" className={navItemClass('/patient/STK-001')}>
-              <User size={18} className={iconColor('/patient/STK-001', 'text-[#10b981]')} />
+            <Link
+              href={`/patient/${activePatientId}`}
+              onClick={onClose}
+              className={navItemClass(`/patient/${activePatientId}`)}
+            >
+              <User size={18} className={iconColor(`/patient/${activePatientId}`, 'text-[#10b981]')} />
               <span className="text-sm font-medium">Profil Pasien</span>
             </Link>
           </div>
@@ -67,19 +77,40 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
         {/* Section 3 */}
         <div className="mb-6">
-          <p className="px-4 text-xs font-bold text-gray-400 mb-3 tracking-wider">TERAPI & DIAGNOSA</p>
+          <p className="px-4 text-xs font-bold text-gray-400 mb-3 tracking-wider">TERAPI &amp; DIAGNOSA</p>
           <div className="space-y-1">
-            <Link href="/patient/STK-001/diagnosa" className={navItemClass('/patient/STK-001/diagnosa')}>
-              <FilePlus size={18} className={iconColor('/patient/STK-001/diagnosa', 'text-[#f59e0b]')} />
+            <Link
+              href={`/patient/${activePatientId}/diagnosa`}
+              onClick={onClose}
+              className={navItemClass(`/patient/${activePatientId}/diagnosa`)}
+            >
+              <FilePlus
+                size={18}
+                className={iconColor(`/patient/${activePatientId}/diagnosa`, 'text-[#f59e0b]')}
+              />
               <span className="text-sm font-medium">Mulai Sesi Baru</span>
             </Link>
-            <Link href="/patient/STK-001/assesmen" className={navItemClass('/patient/STK-001/assesmen')}>
-              <FileText size={18} className={iconColor('/patient/STK-001/assesmen', 'text-[#ef4444]')} />
+            <Link
+              href={`/patient/${activePatientId}/assesmen`}
+              onClick={onClose}
+              className={navItemClass(`/patient/${activePatientId}/assesmen`)}
+            >
+              <FileText
+                size={18}
+                className={iconColor(`/patient/${activePatientId}/assesmen`, 'text-[#ef4444]')}
+              />
               <span className="text-sm font-medium">Input Assesmen</span>
             </Link>
-            <Link href="/patient/STK-001/mode" className={navItemClass('/patient/STK-001/mode')}>
-              <Activity size={18} className={iconColor('/patient/STK-001/mode', 'text-[#8b5cf6]')} />
-              <span className="text-sm font-medium">Mode Alat IoT</span>
+            <Link
+              href={`/patient/${activePatientId}/mode`}
+              onClick={onClose}
+              className={navItemClass(`/patient/${activePatientId}/mode`)}
+            >
+              <Activity
+                size={18}
+                className={iconColor(`/patient/${activePatientId}/mode`, 'text-[#8b5cf6]')}
+              />
+              <span className="text-sm font-medium">Mode Pengukuran</span>
             </Link>
           </div>
         </div>

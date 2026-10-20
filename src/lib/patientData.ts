@@ -18,15 +18,34 @@ export interface PatientBundle {
   source: 'supabase' | 'dummy';
 }
 
+function enrichPoint(pt: PerformanceSummary): PerformanceSummary {
+  return {
+    ...pt,
+    flexionG1: pt.flexionG1 ?? pt.avgFlexion,
+    flexionG2: pt.flexionG2 ?? +(pt.avgFlexion + 1.0).toFixed(1),
+    extensionG1: pt.extensionG1 ?? pt.avgExtension,
+    extensionG2: pt.extensionG2 ?? +(pt.avgExtension + 0.8).toFixed(1),
+  };
+}
+
 /** Jika hanya ada 1 titik data, tambahkan titik 'Awal' agar grafik garis selalu terbentuk */
 function ensureLinePoints(series: PerformanceSummary[]): PerformanceSummary[] {
-  if (series.length === 1) {
+  const enriched = series.map(enrichPoint);
+  if (enriched.length === 1) {
     return [
-      { month: 'Awal', avgFlexion: 0, avgExtension: 0 },
-      series[0],
+      {
+        month: 'Awal',
+        avgFlexion: 0,
+        avgExtension: 0,
+        flexionG1: 0,
+        flexionG2: 0,
+        extensionG1: 0,
+        extensionG2: 0,
+      },
+      enriched[0],
     ];
   }
-  return series;
+  return enriched;
 }
 
 function dummyBundle(code: string): PatientBundle {
@@ -92,26 +111,50 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
       for (const side of ['R', 'L'] as HandSide[]) {
         for (const fNo of [1, 2, 3, 4, 5] as FingerNo[]) {
           const fSessions = sessions.filter(s => s.hand_side === side && s.finger_no === fNo);
-          const monthMap = new Map<string, { flex: number[]; ext: number[] }>();
+          const monthMap = new Map<
+            string,
+            { flexG1: number[]; flexG2: number[]; extG1: number[]; extG2: number[] }
+          >();
           for (const s of fSessions) {
             const mLabel = toMonth(s.started_at);
-            if (!monthMap.has(mLabel)) monthMap.set(mLabel, { flex: [], ext: [] });
-            const vals = ((s.measurements as { force_value: number }[]) ?? []).map(m => Number(m.force_value ?? 0));
-            const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-            if (s.measure_type === 'fleksi') monthMap.get(mLabel)!.flex.push(avg);
-            else if (s.measure_type === 'ekstensi') monthMap.get(mLabel)!.ext.push(avg);
+            if (!monthMap.has(mLabel)) {
+              monthMap.set(mLabel, { flexG1: [], flexG2: [], extG1: [], extG2: [] });
+            }
+            const meas = ((s.measurements as { measurement_no: number; force_value: number }[]) ?? []).sort(
+              (a, b) => (a.measurement_no ?? 1) - (b.measurement_no ?? 1)
+            );
+            const g1 = Number(meas[0]?.force_value ?? 0);
+            const g2 = Number(meas[1]?.force_value ?? meas[0]?.force_value ?? 0);
+            if (s.measure_type === 'fleksi') {
+              monthMap.get(mLabel)!.flexG1.push(g1);
+              monthMap.get(mLabel)!.flexG2.push(g2);
+            } else if (s.measure_type === 'ekstensi') {
+              monthMap.get(mLabel)!.extG1.push(g1);
+              monthMap.get(mLabel)!.extG2.push(g2);
+            }
           }
           const arr: PerformanceSummary[] = [];
+          const avgArr = (a: number[]) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : 0);
           monthMap.forEach((v, mLabel) => {
-            const fAvg = v.flex.length ? +(v.flex.reduce((a, b) => a + b, 0) / v.flex.length).toFixed(1) : 0;
-            const eAvg = v.ext.length ? +(v.ext.reduce((a, b) => a + b, 0) / v.ext.length).toFixed(1) : 0;
-            arr.push({ month: mLabel, avgFlexion: fAvg, avgExtension: eAvg });
+            const fg1 = avgArr(v.flexG1);
+            const fg2 = avgArr(v.flexG2);
+            const eg1 = avgArr(v.extG1);
+            const eg2 = avgArr(v.extG2);
+            arr.push({
+              month: mLabel,
+              avgFlexion: +((fg1 + fg2) / 2).toFixed(1),
+              avgExtension: +((eg1 + eg2) / 2).toFixed(1),
+              flexionG1: fg1,
+              flexionG2: fg2,
+              extensionG1: eg1,
+              extensionG2: eg2,
+            });
           });
           fingers[side][fNo] = ensureLinePoints(arr);
         }
       }
     } else {
-      // Semua sesi di bulan yang sama: jika ada Gerakan 1 & Gerakan 2 di dalam sesi, tampilkan titiknya
+      // Semua sesi di bulan yang sama
       for (const side of ['R', 'L'] as HandSide[]) {
         for (const fNo of [1, 2, 3, 4, 5] as FingerNo[]) {
           const flexSessions = sessions.filter(
@@ -133,25 +176,21 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
               (a, b) => (a.measurement_no ?? 1) - (b.measurement_no ?? 1)
             );
             const mName = toMonth((fs || es)?.started_at);
+            const fg1 = Number(fMeas[0]?.force_value ?? 0);
+            const fg2 = Number(fMeas[1]?.force_value ?? fMeas[0]?.force_value ?? 0);
+            const eg1 = Number(eMeas[0]?.force_value ?? 0);
+            const eg2 = Number(eMeas[1]?.force_value ?? eMeas[0]?.force_value ?? 0);
+            const label = maxLen === 1 ? mName : `${mName} #${i + 1}`;
 
-            if (maxLen === 1 && (fMeas.length > 1 || eMeas.length > 1)) {
-              // Tampilkan Gerakan 1 dan Gerakan 2 secara langsung pada grafik
-              const count = Math.max(fMeas.length, eMeas.length);
-              for (let mIdx = 0; mIdx < count; mIdx++) {
-                arr.push({
-                  month: `Gerakan ${mIdx + 1} (${mName})`,
-                  avgFlexion: Number(fMeas[mIdx]?.force_value ?? fMeas[0]?.force_value ?? 0),
-                  avgExtension: Number(eMeas[mIdx]?.force_value ?? eMeas[0]?.force_value ?? 0),
-                });
-              }
-            } else {
-              const fVals = fMeas.map(m => Number(m.force_value ?? 0));
-              const eVals = eMeas.map(m => Number(m.force_value ?? 0));
-              const fAvg = fVals.length ? +(fVals.reduce((a, b) => a + b, 0) / fVals.length).toFixed(1) : 0;
-              const eAvg = eVals.length ? +(eVals.reduce((a, b) => a + b, 0) / eVals.length).toFixed(1) : 0;
-              const label = maxLen === 1 ? mName : `${mName} #${i + 1}`;
-              arr.push({ month: label, avgFlexion: fAvg, avgExtension: eAvg });
-            }
+            arr.push({
+              month: label,
+              avgFlexion: +((fg1 + fg2) / 2).toFixed(1),
+              avgExtension: +((eg1 + eg2) / 2).toFixed(1),
+              flexionG1: fg1,
+              flexionG2: fg2,
+              extensionG1: eg1,
+              extensionG2: eg2,
+            });
           }
           fingers[side][fNo] = ensureLinePoints(arr);
         }
@@ -159,21 +198,38 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
     }
 
     // Hitung grafik bulanan / sesi dari seluruh jari
-    const monthlyMap = new Map<string, { flex: number[]; ext: number[] }>();
+    const monthlyMap = new Map<
+      string,
+      { flex: number[]; ext: number[]; fg1: number[]; fg2: number[]; eg1: number[]; eg2: number[] }
+    >();
     (['R', 'L'] as HandSide[]).forEach(side => {
       ([1, 2, 3, 4, 5] as FingerNo[]).forEach(fNo => {
         for (const pt of fingers[side][fNo]) {
-          if (!monthlyMap.has(pt.month)) monthlyMap.set(pt.month, { flex: [], ext: [] });
-          monthlyMap.get(pt.month)!.flex.push(pt.avgFlexion);
-          monthlyMap.get(pt.month)!.ext.push(pt.avgExtension);
+          if (!monthlyMap.has(pt.month)) {
+            monthlyMap.set(pt.month, { flex: [], ext: [], fg1: [], fg2: [], eg1: [], eg2: [] });
+          }
+          const entry = monthlyMap.get(pt.month)!;
+          entry.flex.push(pt.avgFlexion);
+          entry.ext.push(pt.avgExtension);
+          entry.fg1.push(pt.flexionG1 ?? pt.avgFlexion);
+          entry.fg2.push(pt.flexionG2 ?? pt.avgFlexion);
+          entry.eg1.push(pt.extensionG1 ?? pt.avgExtension);
+          entry.eg2.push(pt.extensionG2 ?? pt.avgExtension);
         }
       });
     });
+    const avgArr = (a: number[]) => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : 0);
     const monthly: PerformanceSummary[] = [];
     monthlyMap.forEach((v, label) => {
-      const fAvg = v.flex.length ? +(v.flex.reduce((a, b) => a + b, 0) / v.flex.length).toFixed(1) : 0;
-      const eAvg = v.ext.length ? +(v.ext.reduce((a, b) => a + b, 0) / v.ext.length).toFixed(1) : 0;
-      monthly.push({ month: label, avgFlexion: fAvg, avgExtension: eAvg });
+      monthly.push({
+        month: label,
+        avgFlexion: avgArr(v.flex),
+        avgExtension: avgArr(v.ext),
+        flexionG1: avgArr(v.fg1),
+        flexionG2: avgArr(v.fg2),
+        extensionG1: avgArr(v.eg1),
+        extensionG2: avgArr(v.eg2),
+      });
     });
 
     return {

@@ -39,6 +39,10 @@ export interface PerformanceSummary {
   month: string;
   avgFlexion: number;
   avgExtension: number;
+  flexionG1?: number;
+  flexionG2?: number;
+  extensionG1?: number;
+  extensionG2?: number;
 }
 
 // Data Dummy Pasien
