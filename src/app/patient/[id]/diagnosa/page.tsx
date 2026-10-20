@@ -2,36 +2,49 @@
 
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import BodySilhouette from '@/components/interactive/BodySilhouette';
+import BodySilhouette, { RegionKey, REGION_LABELS } from '@/components/interactive/BodySilhouette';
 
 export default function DiagnosaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [selectedRegions, setSelectedRegions] = useState<RegionKey[]>([]);
 
   const handleNext = () => {
-    if (selectedRegion) {
-      router.push(`/patient/${id}/assesmen?region=${selectedRegion}`);
+    if (selectedRegions.length > 0) {
+      const regionParam = selectedRegions.map(r => REGION_LABELS[r]).join(', ');
+      router.push(`/patient/${id}/assesmen?region=${encodeURIComponent(regionParam)}`);
     }
   };
 
-  return (
-    <div className="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-sm border border-gray-100 text-center">
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">Diagnosa: Stroke</h1>
-      <p className="text-gray-500 mb-8">Silakan pilih bagian tubuh yang mengalami Hemiprase.</p>
-      
-      <BodySilhouette onSelectRegion={(region) => setSelectedRegion(region)} />
+  const selectedLabelText =
+    selectedRegions.length > 0
+      ? selectedRegions.map(r => REGION_LABELS[r]).join(', ')
+      : 'Belum ada';
 
-      <div className="mt-8 pt-6 border-t border-gray-100 flex justify-between items-center">
-        <p className="text-gray-600">
-          Region terpilih: <span className="font-semibold text-blue-900">{selectedRegion || 'Belum ada'}</span>
+  return (
+    <div className="max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-lg shadow-sm border border-gray-100 text-center">
+      <h1 className="text-2xl font-bold text-gray-800 mb-2">Diagnosa: Stroke</h1>
+      <p className="text-gray-500 mb-4 text-sm sm:text-base">
+        Silakan pilih bagian tubuh yang mengalami Hemiparese (bisa pilih lebih dari 1 bagian).
+      </p>
+
+      <BodySilhouette onSelectRegions={regions => setSelectedRegions(regions)} />
+
+      <div className="mt-6 pt-6 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <p className="text-gray-600 text-sm">
+          Region terpilih:{' '}
+          <span className="font-semibold text-blue-900">{selectedLabelText}</span>
         </p>
-        <button 
+        <button
           onClick={handleNext}
-          disabled={!selectedRegion}
-          className={`px-8 py-2 rounded shadow font-semibold transition ${selectedRegion ? 'bg-[#1e3a8a] text-white hover:bg-blue-800' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+          disabled={selectedRegions.length === 0}
+          className={`w-full sm:w-auto px-8 py-2.5 rounded-lg shadow font-semibold transition ${
+            selectedRegions.length > 0
+              ? 'bg-[#1e3a8a] text-white hover:bg-blue-800'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+          }`}
         >
-          Oke
+          Oke ({selectedRegions.length} dipilih)
         </button>
       </div>
     </div>

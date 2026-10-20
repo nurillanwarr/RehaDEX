@@ -10,7 +10,7 @@ interface PerformanceChartProps {
 export default function PerformanceChart({ data }: PerformanceChartProps) {
   return (
     <div className="w-full bg-white p-4 sm:p-6 rounded-lg shadow-sm border border-gray-100">
-      <h3 className="text-lg font-semibold text-gray-700 mb-4">Grafik Performa Rata-rata per Bulan</h3>
+      <h3 className="text-lg font-semibold text-gray-700 mb-4">Grafik Performa per Bulan</h3>
       <div className="w-full h-64">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -31,7 +31,7 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
             <Legend iconType="circle" />
             <Line
               type="monotone"
-              name="Rata-rata Fleksi"
+              name="Fleksi"
               dataKey="avgFlexion"
               stroke="#1e3a8a"
               strokeWidth={3}
@@ -40,7 +40,7 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
             />
             <Line
               type="monotone"
-              name="Rata-rata Ekstensi"
+              name="Ekstensi"
               dataKey="avgExtension"
               stroke="#10b981"
               strokeWidth={3}

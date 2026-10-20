@@ -8,31 +8,69 @@ type FlowStep =
   | 'METHOD_SELECTION'
   | 'MANUAL_ALL_FINGERS'
   | 'PENGUKURAN_TYPE'
+  | 'MOVEMENT_SELECTION'
   | 'SIDE_SELECTION'
   | 'FINGER_SELECTION'
   | 'IOT_WAITING';
 
-interface FingerInputRow {
-  finger_no: 1 | 2 | 3 | 4 | 5;
-  label: string;
-  fleksi: string;
-  ekstensi: string;
-}
+type HandSide = 'R' | 'L';
+type MeasureType = 'fleksi' | 'ekstensi';
+type MovementNo = 1 | 2;
+type FingerNo = 1 | 2 | 3 | 4 | 5;
 
-const DEFAULT_FINGERS: FingerInputRow[] = [
-  { finger_no: 1, label: 'Jari 1 (Ibu Jari)', fleksi: '22.0', ekstensi: '15.0' },
-  { finger_no: 2, label: 'Jari 2 (Telunjuk)', fleksi: '20.5', ekstensi: '14.5' },
-  { finger_no: 3, label: 'Jari 3 (Tengah)', fleksi: '19.0', ekstensi: '13.5' },
-  { finger_no: 4, label: 'Jari 4 (Manis)', fleksi: '17.0', ekstensi: '12.0' },
-  { finger_no: 5, label: 'Jari 5 (Kelingking)', fleksi: '15.0', ekstensi: '10.5' },
+const FINGER_LABELS: Record<FingerNo, string> = {
+  1: 'Jari 1 (Ibu Jari)',
+  2: 'Jari 2 (Telunjuk)',
+  3: 'Jari 3 (Tengah)',
+  4: 'Jari 4 (Manis)',
+  5: 'Jari 5 (Kelingking)',
+};
+
+// Urutan tahapan sesuai instruksi:
+// Tangan Kanan: G1 Fleksi -> G2 Fleksi -> G1 Ekstensi -> G2 Ekstensi -> pindah Tangan Kiri
+const SEQUENCE_STEPS: { side: HandSide; movement: MovementNo; type: MeasureType; title: string }[] = [
+  { side: 'R', movement: 1, type: 'fleksi', title: 'Kanan • Gerakan 1 • Fleksi' },
+  { side: 'R', movement: 2, type: 'fleksi', title: 'Kanan • Gerakan 2 • Fleksi' },
+  { side: 'R', movement: 1, type: 'ekstensi', title: 'Kanan • Gerakan 1 • Ekstensi' },
+  { side: 'R', movement: 2, type: 'ekstensi', title: 'Kanan • Gerakan 2 • Ekstensi' },
+  { side: 'L', movement: 1, type: 'fleksi', title: 'Kiri • Gerakan 1 • Fleksi' },
+  { side: 'L', movement: 2, type: 'fleksi', title: 'Kiri • Gerakan 2 • Fleksi' },
+  { side: 'L', movement: 1, type: 'ekstensi', title: 'Kiri • Gerakan 1 • Ekstensi' },
+  { side: 'L', movement: 2, type: 'ekstensi', title: 'Kiri • Gerakan 2 • Ekstensi' },
 ];
+
+type FingerMatrix = Record<
+  HandSide,
+  Record<
+    FingerNo,
+    {
+      fleksi_g1: string;
+      fleksi_g2: string;
+      ekstensi_g1: string;
+      ekstensi_g2: string;
+    }
+  >
+>;
+
+function createInitialMatrix(): FingerMatrix {
+  const buildHand = (offset: number) => ({
+    1: { fleksi_g1: String(22 + offset), fleksi_g2: String(23 + offset), ekstensi_g1: String(15 + offset), ekstensi_g2: String(16 + offset) },
+    2: { fleksi_g1: String(20 + offset), fleksi_g2: String(21 + offset), ekstensi_g1: String(14 + offset), ekstensi_g2: String(15 + offset) },
+    3: { fleksi_g1: String(19 + offset), fleksi_g2: String(20 + offset), ekstensi_g1: String(13 + offset), ekstensi_g2: String(14 + offset) },
+    4: { fleksi_g1: String(17 + offset), fleksi_g2: String(18 + offset), ekstensi_g1: String(12 + offset), ekstensi_g2: String(13 + offset) },
+    5: { fleksi_g1: String(15 + offset), fleksi_g2: String(16 + offset), ekstensi_g1: String(10 + offset), ekstensi_g2: String(11 + offset) },
+  });
+  return {
+    R: buildHand(0),
+    L: buildHand(0),
+  };
+}
 
 export default function ModePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
   const defaultTemp = searchParams.get('temp') || '36.5';
-  const defaultRegion = searchParams.get('region') || '';
   const initialMethod = searchParams.get('method');
 
   const [step, setStep] = useState<FlowStep>(
@@ -42,17 +80,19 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
   // State untuk alur Otomatis (Alat IoT)
   const [iotSelection, setIotSelection] = useState({
     pengukuranType: 'Fleksi',
-    side: defaultRegion.toLowerCase().includes('left') ? 'Kiri' : 'Kanan',
+    movementNo: 1 as MovementNo,
+    side: 'Kanan',
     fingerNo: 1,
   });
 
-  // State untuk alur Manual (Semua 5 Jari Sekaligus)
+  // State untuk alur Manual (Gerakan 1 & 2, Tangan Kanan/Kiri, Fleksi/Ekstensi)
   const today = new Date().toISOString().slice(0, 10);
-  const [manualSide, setManualSide] = useState<'R' | 'L'>(
-    defaultRegion.toLowerCase().includes('left') ? 'L' : 'R'
-  );
+  const [movementNo, setMovementNo] = useState<MovementNo>(1);
+  const [manualSide, setManualSide] = useState<HandSide>('R');
+  const [measureType, setMeasureType] = useState<MeasureType>('fleksi');
   const [measuredDate, setMeasuredDate] = useState(today);
-  const [fingersData, setFingersData] = useState<FingerInputRow[]>(DEFAULT_FINGERS);
+  const [matrix, setMatrix] = useState<FingerMatrix>(createInitialMatrix);
+
   const [heartRate, setHeartRate] = useState('80');
   const [spo2, setSpo2] = useState('98');
   const [temperature, setTemperature] = useState(defaultTemp);
@@ -65,19 +105,37 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
     router.push(`/patient/${id}`);
   };
 
-  const updateFingerField = (fingerNo: number, field: 'fleksi' | 'ekstensi', value: string) => {
-    setFingersData(prev =>
-      prev.map(row => (row.finger_no === fingerNo ? { ...row, [field]: value } : row))
-    );
+  const activeFieldKey = `${measureType}_g${movementNo}` as
+    | 'fleksi_g1'
+    | 'fleksi_g2'
+    | 'ekstensi_g1'
+    | 'ekstensi_g2';
+
+  const updateCurrentFingerValue = (fNo: FingerNo, val: string) => {
+    setMatrix(prev => ({
+      ...prev,
+      [manualSide]: {
+        ...prev[manualSide],
+        [fNo]: {
+          ...prev[manualSide][fNo],
+          [activeFieldKey]: val,
+        },
+      },
+    }));
   };
 
-  const avgFlexAll = +(
-    fingersData.reduce((acc, r) => acc + (parseFloat(r.fleksi) || 0), 0) / fingersData.length
-  ).toFixed(1);
+  // Cari indeks urutan saat ini untuk tombol "Tahap Berikutnya"
+  const currentSeqIdx = SEQUENCE_STEPS.findIndex(
+    s => s.side === manualSide && s.movement === movementNo && s.type === measureType
+  );
 
-  const avgExtAll = +(
-    fingersData.reduce((acc, r) => acc + (parseFloat(r.ekstensi) || 0), 0) / fingersData.length
-  ).toFixed(1);
+  const goToSequenceStep = (idx: number) => {
+    const target = SEQUENCE_STEPS[idx];
+    if (!target) return;
+    setManualSide(target.side);
+    setMovementNo(target.movement);
+    setMeasureType(target.type);
+  };
 
   const handleSaveAllFingers = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +143,29 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
     setFeedback(null);
 
     try {
+      const allFingersPayload: {
+        hand_side: HandSide;
+        finger_no: FingerNo;
+        fleksi_g1: number;
+        fleksi_g2: number;
+        ekstensi_g1: number;
+        ekstensi_g2: number;
+      }[] = [];
+
+      (['R', 'L'] as HandSide[]).forEach(side => {
+        ([1, 2, 3, 4, 5] as FingerNo[]).forEach(fNo => {
+          const item = matrix[side][fNo];
+          allFingersPayload.push({
+            hand_side: side,
+            finger_no: fNo,
+            fleksi_g1: parseFloat(item.fleksi_g1) || 0,
+            fleksi_g2: parseFloat(item.fleksi_g2) || 0,
+            ekstensi_g1: parseFloat(item.ekstensi_g1) || 0,
+            ekstensi_g2: parseFloat(item.ekstensi_g2) || 0,
+          });
+        });
+      });
+
       const res = await fetch('/api/manual-entry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,18 +178,14 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
           spo2: parseFloat(spo2),
           temperature: parseFloat(temperature),
           functional_score: functionalScore !== '' ? parseFloat(functionalScore) : null,
-          fingers: fingersData.map(r => ({
-            finger_no: r.finger_no,
-            fleksi: parseFloat(r.fleksi) || 0,
-            ekstensi: parseFloat(r.ekstensi) || 0,
-          })),
+          fingers: allFingersPayload,
         }),
       });
 
       const data = await res.json();
       if (data.ok) {
         setFeedback(
-          `Berhasil menyimpan kelima jari ke ${
+          `Berhasil menyimpan data pengukuran ke ${
             data.savedTo === 'supabase' ? 'Database Supabase' : 'Memori Lokal'
           }! Mengalihkan ke grafik...`
         );
@@ -125,11 +202,11 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
   };
 
   return (
-    <div className="max-w-4xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100 min-h-[500px]">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-800">Pemilihan Mode Terapi & Pengukuran</h1>
-        <p className="text-gray-500">
-          Pasien: <span className="font-semibold text-blue-900">{id}</span> • Pilih metode pengisian manual (semua jari) atau otomatis dari alat IoT.
+    <div className="max-w-4xl mx-auto bg-white p-5 sm:p-8 rounded-2xl shadow-sm border border-gray-100 min-h-[500px]">
+      <div className="mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Pemilihan Mode Terapi &amp; Pengukuran</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Pasien: <span className="font-semibold text-blue-900">{id}</span> • Pilih metode pengisian manual atau otomatis dari alat IoT.
         </p>
       </div>
 
@@ -178,7 +255,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
               </span>
               <h3 className="text-xl font-bold text-teal-900 mb-2">Input Manual (Semua Jari)</h3>
               <p className="text-gray-600 text-sm">
-                Masukkan nilai Fleksi &amp; Ekstensi untuk Jari 1 s/d Jari 5 sekaligus, lalu simpan langsung ke database Supabase.
+                Pilih Gerakan 1 / Gerakan 2, Sisi Tangan, serta Fleksi / Ekstensi untuk Jari 1 s/d Jari 5, lalu simpan ke database.
               </p>
             </button>
 
@@ -191,7 +268,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
               </span>
               <h3 className="text-xl font-bold text-[#1e3a8a] mb-2">Otomatis dari Alat (ESP32)</h3>
               <p className="text-gray-600 text-sm">
-                Pilih jenis pengukuran, sisi tangan, dan jari untuk menerima pembacaan sensor secara otomatis dari alat.
+                Pilih jenis pengukuran, Gerakan 1/2, sisi tangan, dan jari untuk menerima pembacaan sensor otomatis dari alat.
               </p>
             </button>
           </div>
@@ -199,11 +276,11 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
       )}
 
       {/* ===================================================================== */}
-      {/* ALUR 1: INPUT MANUAL SEMUA 5 JARI SEKALIGUS -> SIMPAN KE DATABASE     */}
+      {/* ALUR 1: INPUT MANUAL (GERAKAN 1 & 2 -> TANGAN -> FLEKSI / EKSTENSI)   */}
       {/* ===================================================================== */}
       {step === 'MANUAL_ALL_FINGERS' && (
         <form onSubmit={handleSaveAllFingers} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setStep('METHOD_SELECTION')}
@@ -216,11 +293,42 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             </span>
           </div>
 
-          {/* Pilih Sisi Tangan & Tanggal */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+          <div className="bg-gray-50 p-4 sm:p-5 rounded-xl border border-gray-200 space-y-4">
+            {/* 1. PILIH GERAKAN 1 / GERAKAN 2 */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                1. Pilih Sisi Tangan yang Diukur
+                1. Pilih Tahap Gerakan
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMovementNo(1)}
+                  className={`py-2.5 px-4 rounded-lg font-bold text-sm border-2 transition ${
+                    movementNo === 1
+                      ? 'bg-[#12aca7] border-[#12aca7] text-white shadow'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-[#12aca7]'
+                  }`}
+                >
+                  Gerakan 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMovementNo(2)}
+                  className={`py-2.5 px-4 rounded-lg font-bold text-sm border-2 transition ${
+                    movementNo === 2
+                      ? 'bg-[#12aca7] border-[#12aca7] text-white shadow'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-[#12aca7]'
+                  }`}
+                >
+                  Gerakan 2
+                </button>
+              </div>
+            </div>
+
+            {/* 2. PILIH SISI TANGAN */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                2. Pilih Sisi Tangan yang Diukur
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -248,9 +356,41 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
               </div>
             </div>
 
+            {/* 3. PILIH JENIS PENGUKURAN (FLEKSI / EKSTENSI) */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                2. Tanggal / Bulan Pengukuran
+                3. Pilih Jenis Pengukuran
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMeasureType('fleksi')}
+                  className={`py-2.5 px-4 rounded-lg font-bold text-sm border-2 transition ${
+                    measureType === 'fleksi'
+                      ? 'bg-red-600 border-red-600 text-white shadow'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-red-500'
+                  }`}
+                >
+                  Fleksi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMeasureType('ekstensi')}
+                  className={`py-2.5 px-4 rounded-lg font-bold text-sm border-2 transition ${
+                    measureType === 'ekstensi'
+                      ? 'bg-lime-600 border-lime-600 text-white shadow'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-lime-600'
+                  }`}
+                >
+                  Ekstensi
+                </button>
+              </div>
+            </div>
+
+            {/* 4. TANGGAL PENGUKURAN */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                4. Tanggal / Bulan Pengukuran
               </label>
               <input
                 type="date"
@@ -259,60 +399,55 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
                 className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Data akan dikelompokkan berdasarkan bulan pada grafik pasien.
-              </p>
             </div>
           </div>
 
-          {/* Tabel Input Kelima Jari */}
+          {/* 5. TABEL INPUT KELIMA JARI (Tanpa tulisan rata-rata, pas di layar HP) */}
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h3 className="text-base font-bold text-gray-800">
-                3. Input Nilai Kekuatan Kelima Jari — Tangan {manualSide === 'R' ? 'Kanan (R)' : 'Kiri (L)'}
+                5. Input Nilai Kekuatan Kelima Jari — Tangan{' '}
+                {manualSide === 'R' ? 'Kanan (R)' : 'Kiri (L)'} •{' '}
+                <span className="text-[#12aca7]">Gerakan {movementNo}</span> •{' '}
+                <span className={measureType === 'fleksi' ? 'text-red-600' : 'text-lime-700'}>
+                  {measureType === 'fleksi' ? 'Fleksi' : 'Ekstensi'}
+                </span>
               </h3>
-              <div className="flex gap-3 text-xs font-semibold">
-                <span className="px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200">
-                  Rata-rata Fleksi: {avgFlexAll}
-                </span>
-                <span className="px-2.5 py-1 rounded bg-lime-50 text-lime-800 border border-lime-200">
-                  Rata-rata Ekstensi: {avgExtAll}
-                </span>
-              </div>
+              <span className="text-xs text-gray-500">
+                Tahap {currentSeqIdx + 1} dari {SEQUENCE_STEPS.length}
+              </span>
             </div>
 
-            <div className="overflow-x-auto border border-gray-200 rounded-xl">
-              <table className="w-full text-left border-collapse min-w-[480px]">
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-gray-700 text-xs uppercase tracking-wider border-b border-gray-200">
                     <th className="py-3 px-4 font-semibold">Jari Tangan</th>
-                    <th className="py-3 px-4 font-semibold text-red-700">Nilai Fleksi (Merah)</th>
-                    <th className="py-3 px-4 font-semibold text-green-700">Nilai Ekstensi (Hijau)</th>
+                    <th
+                      className={`py-3 px-4 font-semibold ${
+                        measureType === 'fleksi' ? 'text-red-700' : 'text-lime-700'
+                      }`}
+                    >
+                      Nilai {measureType === 'fleksi' ? 'Fleksi (Merah)' : 'Ekstensi (Hijau)'} — Gerakan {movementNo}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
-                  {fingersData.map(row => (
-                    <tr key={row.finger_no} className="hover:bg-gray-50/80">
-                      <td className="py-3 px-4 font-semibold text-gray-800">{row.label}</td>
-                      <td className="py-2.5 px-4">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={row.fleksi}
-                          onChange={e => updateFingerField(row.finger_no, 'fleksi', e.target.value)}
-                          placeholder="0.0"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:border-red-500"
-                          required
-                        />
+                  {([1, 2, 3, 4, 5] as FingerNo[]).map(fNo => (
+                    <tr key={fNo} className="hover:bg-gray-50/80">
+                      <td className="py-3 px-4 font-semibold text-gray-800">
+                        {FINGER_LABELS[fNo]}
                       </td>
                       <td className="py-2.5 px-4">
                         <input
                           type="number"
                           step="0.1"
-                          value={row.ekstensi}
-                          onChange={e => updateFingerField(row.finger_no, 'ekstensi', e.target.value)}
+                          value={matrix[manualSide][fNo][activeFieldKey]}
+                          onChange={e => updateCurrentFingerValue(fNo, e.target.value)}
                           placeholder="0.0"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:border-green-600"
+                          className={`w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none ${
+                            measureType === 'fleksi' ? 'focus:border-red-500' : 'focus:border-lime-600'
+                          }`}
                           required
                         />
                       </td>
@@ -321,11 +456,39 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
                 </tbody>
               </table>
             </div>
+
+            {/* Navigasi Urutan Tahap Gerakan */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 bg-blue-50/60 border border-blue-100 rounded-xl p-3">
+              <button
+                type="button"
+                disabled={currentSeqIdx <= 0}
+                onClick={() => goToSequenceStep(currentSeqIdx - 1)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+              >
+                &larr; Tahap Sebelumnya
+              </button>
+              <span className="text-xs text-blue-900 font-medium text-center">
+                {currentSeqIdx < SEQUENCE_STEPS.length - 1
+                  ? `Selanjutnya: ${SEQUENCE_STEPS[currentSeqIdx + 1].title}`
+                  : 'Semua tahap (Kanan & Kiri, Gerakan 1 & 2) selesai diisi!'}
+              </span>
+              {currentSeqIdx < SEQUENCE_STEPS.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => goToSequenceStep(currentSeqIdx + 1)}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#1e3a8a] text-white hover:bg-blue-800 transition"
+                >
+                  Lanjut: {SEQUENCE_STEPS[currentSeqIdx + 1].title} &rarr;
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Tanda Vital & Skor Fungsional */}
+          {/* 6. Tanda Vital & Skor Fungsional */}
           <div className="border-t border-gray-100 pt-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">4. Tanda Vital &amp; Skor Fungsional Pasien</h4>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">
+              6. Tanda Vital &amp; Skor Fungsional Pasien
+            </h4>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Skor Fungsional (0–100)</label>
@@ -379,9 +542,9 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             <button
               type="submit"
               disabled={saving}
-              className="bg-[#12aca7] hover:bg-[#0e8a86] text-white px-7 py-3 rounded-xl shadow font-semibold transition disabled:opacity-50"
+              className="w-full sm:w-auto bg-[#12aca7] hover:bg-[#0e8a86] text-white px-7 py-3 rounded-xl shadow font-semibold transition disabled:opacity-50"
             >
-              {saving ? 'Menyimpan Semua Jari ke Database...' : 'Simpan Semua 5 Jari ke Database & Lihat Grafik'}
+              {saving ? 'Menyimpan ke Database...' : 'Simpan Semua Jari ke Database & Lihat Grafik'}
             </button>
           </div>
         </form>
@@ -405,7 +568,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             <button
               onClick={() => {
                 setIotSelection(prev => ({ ...prev, pengukuranType: 'Fleksi' }));
-                setStep('SIDE_SELECTION');
+                setStep('MOVEMENT_SELECTION');
               }}
               className="bg-blue-50 p-8 rounded-xl shadow-sm border-2 border-blue-100 hover:border-blue-500 transition text-center"
             >
@@ -414,7 +577,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             <button
               onClick={() => {
                 setIotSelection(prev => ({ ...prev, pengukuranType: 'Ekstensi' }));
-                setStep('SIDE_SELECTION');
+                setStep('MOVEMENT_SELECTION');
               }}
               className="bg-blue-50 p-8 rounded-xl shadow-sm border-2 border-blue-100 hover:border-blue-500 transition text-center"
             >
@@ -424,10 +587,44 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
-      {step === 'SIDE_SELECTION' && (
+      {step === 'MOVEMENT_SELECTION' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <button
             onClick={() => setStep('PENGUKURAN_TYPE')}
+            className="text-blue-500 hover:underline text-sm mb-4 font-medium"
+          >
+            &larr; Kembali
+          </button>
+          <h2 className="text-lg font-semibold text-gray-700 text-center mb-6">
+            [Mode Alat IoT] Pilih Gerakan ({iotSelection.pengukuranType})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <button
+              onClick={() => {
+                setIotSelection(prev => ({ ...prev, movementNo: 1 }));
+                setStep('SIDE_SELECTION');
+              }}
+              className="bg-teal-50 p-8 rounded-xl shadow-sm border-2 border-teal-100 hover:border-teal-500 transition text-center"
+            >
+              <h3 className="text-xl font-bold text-teal-800">Gerakan 1</h3>
+            </button>
+            <button
+              onClick={() => {
+                setIotSelection(prev => ({ ...prev, movementNo: 2 }));
+                setStep('SIDE_SELECTION');
+              }}
+              className="bg-teal-50 p-8 rounded-xl shadow-sm border-2 border-teal-100 hover:border-teal-500 transition text-center"
+            >
+              <h3 className="text-xl font-bold text-teal-800">Gerakan 2</h3>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'SIDE_SELECTION' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <button
+            onClick={() => setStep('MOVEMENT_SELECTION')}
             className="text-blue-500 hover:underline text-sm mb-4 font-medium"
           >
             &larr; Kembali
@@ -467,7 +664,7 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             &larr; Kembali
           </button>
           <h2 className="text-lg font-semibold text-gray-700 text-center mb-6">
-            [Mode Alat IoT] Pilih Jari
+            [Mode Alat IoT] Pilih Jari ({iotSelection.pengukuranType} • Gerakan {iotSelection.movementNo} • Tangan {iotSelection.side})
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[1, 2, 3, 4, 5].map(num => (
@@ -495,10 +692,9 @@ export default function ModePage({ params }: { params: Promise<{ id: string }> }
             Menunggu Data Otomatis dari Alat IoT (ESP32)...
           </h2>
           <p className="text-sm text-gray-600 max-w-lg mx-auto">
-            Konfigurasi aktif: <strong>{iotSelection.pengukuranType}</strong> • Tangan{' '}
+            Konfigurasi aktif: <strong>{iotSelection.pengukuranType}</strong> •{' '}
+            <strong>Gerakan {iotSelection.movementNo}</strong> • Tangan{' '}
             <strong>{iotSelection.side}</strong> • <strong>Jari {iotSelection.fingerNo}</strong>.
-            <br />
-            Alat akan mengirimkan 20x pembacaan ke endpoint <code>POST /api/measurements</code>.
           </p>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 max-w-lg mx-auto text-xs text-amber-800">
             Karena alat IoT saat ini masih dalam tahap penyesuaian, Anda dapat beralih ke{' '}

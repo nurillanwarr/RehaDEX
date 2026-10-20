@@ -332,17 +332,16 @@ export async function POST(req: Request) {
   }
 
   // =========================================================================
-  // 4. INPUT PENGUKURAN SEMUA JARI (JARI 1 - 5 SEKALIGUS) MANUAL KE DATABASE
+  // 4. INPUT PENGUKURAN SEMUA JARI (GERAKAN 1 & 2, FLEKSI & EKSTENSI) MANUAL
   // =========================================================================
   if (action === 'add_all_fingers_measurement') {
     const patient_code = String(body.patient_code || '').trim();
-    const hand_side = (body.hand_side === 'L' ? 'L' : 'R') as HandSide;
+    const default_side = (body.hand_side === 'L' ? 'L' : 'R') as HandSide;
     const measured_date = String(body.measured_date || new Date().toISOString().slice(0, 10));
     const heart_rate = body.heart_rate ? Number(body.heart_rate) : 78;
     const spo2 = body.spo2 ? Number(body.spo2) : 98;
     const temperature = body.temperature ? Number(body.temperature) : 36.5;
 
-    // fingersData: Array of { finger_no: 1..5, fleksi: number, ekstensi: number }
     const rawFingers = Array.isArray(body.fingers) ? body.fingers : [];
     if (!patient_code || rawFingers.length === 0) {
       return NextResponse.json(
@@ -359,29 +358,62 @@ export async function POST(req: Request) {
       fingerPerformance[patient_code] = { R: emptyHand(), L: emptyHand() };
     }
 
-    const parsedFingers: { finger_no: FingerNo; fleksi: number; ekstensi: number }[] = [];
+    interface ParsedFingerEntry {
+      hand_side: HandSide;
+      finger_no: FingerNo;
+      fleksiValues: number[];
+      ekstensiValues: number[];
+      flexSummary: number;
+      extSummary: number;
+    }
+
+    const parsedFingers: ParsedFingerEntry[] = [];
 
     for (const item of rawFingers) {
+      const side = (item.hand_side === 'L' ? 'L' : item.hand_side === 'R' ? 'R' : default_side) as HandSide;
       const fNo = Math.min(5, Math.max(1, Number(item.finger_no || 1))) as FingerNo;
-      const flexVal = Number(item.fleksi ?? 0);
-      const extVal = Number(item.ekstensi ?? 0);
-      parsedFingers.push({ finger_no: fNo, fleksi: flexVal, ekstensi: extVal });
 
-      const fingerArr = fingerPerformance[patient_code][hand_side][fNo];
+      const fleksiValues: number[] = [];
+      if (item.fleksi_g1 !== undefined && item.fleksi_g1 !== '') fleksiValues.push(Number(item.fleksi_g1));
+      if (item.fleksi_g2 !== undefined && item.fleksi_g2 !== '') fleksiValues.push(Number(item.fleksi_g2));
+      if (fleksiValues.length === 0 && item.fleksi !== undefined) fleksiValues.push(Number(item.fleksi));
+
+      const ekstensiValues: number[] = [];
+      if (item.ekstensi_g1 !== undefined && item.ekstensi_g1 !== '') ekstensiValues.push(Number(item.ekstensi_g1));
+      if (item.ekstensi_g2 !== undefined && item.ekstensi_g2 !== '') ekstensiValues.push(Number(item.ekstensi_g2));
+      if (ekstensiValues.length === 0 && item.ekstensi !== undefined) ekstensiValues.push(Number(item.ekstensi));
+
+      const flexSummary = fleksiValues.length
+        ? +(fleksiValues.reduce((a, b) => a + b, 0) / fleksiValues.length).toFixed(1)
+        : 0;
+      const extSummary = ekstensiValues.length
+        ? +(ekstensiValues.reduce((a, b) => a + b, 0) / ekstensiValues.length).toFixed(1)
+        : 0;
+
+      parsedFingers.push({
+        hand_side: side,
+        finger_no: fNo,
+        fleksiValues,
+        ekstensiValues,
+        flexSummary,
+        extSummary,
+      });
+
+      const fingerArr = fingerPerformance[patient_code][side][fNo];
       const existingMonth = fingerArr.find(m => m.month === monthLabel);
       if (existingMonth) {
-        existingMonth.avgFlexion = flexVal;
-        existingMonth.avgExtension = extVal;
+        if (fleksiValues.length) existingMonth.avgFlexion = flexSummary;
+        if (ekstensiValues.length) existingMonth.avgExtension = extSummary;
       } else {
         fingerArr.push({
           month: monthLabel,
-          avgFlexion: flexVal,
-          avgExtension: extVal,
+          avgFlexion: flexSummary,
+          avgExtension: extSummary,
         });
       }
     }
 
-    // Update grafik rata-rata bulanan (iotPerformance)
+    // Update grafik bulanan (iotPerformance)
     if (!iotPerformance[patient_code]) iotPerformance[patient_code] = [];
     const allFingersForMonth: { flex: number; ext: number }[] = [];
     (['R', 'L'] as HandSide[]).forEach(s => {
@@ -408,7 +440,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2) Simpan semua 5 jari ke Supabase jika sudah dikonfigurasi
+    // 2) Simpan semua jari (Gerakan 1 & Gerakan 2) ke Supabase jika sudah dikonfigurasi
     if (db) {
       const { data: pRow } = await db
         .from('patients')
@@ -424,9 +456,14 @@ export async function POST(req: Request) {
 
         let hasError = false;
         for (const fItem of parsedFingers) {
-          for (const type of ['fleksi', 'ekstensi'] as const) {
-            const val = type === 'fleksi' ? fItem.fleksi : fItem.ekstensi;
-            const session_code = `${patient_code}-${hand_side}${fItem.finger_no}-${ym}-${type}-M5-${batchTs}`;
+          const pairs: { type: 'fleksi' | 'ekstensi'; values: number[] }[] = [
+            { type: 'fleksi', values: fItem.fleksiValues },
+            { type: 'ekstensi', values: fItem.ekstensiValues },
+          ];
+
+          for (const pair of pairs) {
+            if (pair.values.length === 0) continue;
+            const session_code = `${patient_code}-${fItem.hand_side}${fItem.finger_no}-${ym}-${pair.type}-M5-${batchTs}`;
 
             const { data: sRow, error: sErr } = await db
               .from('assessment_sessions')
@@ -434,10 +471,10 @@ export async function POST(req: Request) {
                 session_code,
                 patient_id: pRow.id,
                 mode: 'pengukuran',
-                measure_type: type,
-                hand_side,
+                measure_type: pair.type,
+                hand_side: fItem.hand_side,
                 finger_no: fItem.finger_no,
-                target_measurements: 1,
+                target_measurements: pair.values.length,
                 started_at: startedAtIso,
                 completed_at: completedAtIso,
               })
@@ -449,18 +486,25 @@ export async function POST(req: Request) {
               continue;
             }
 
-            const { error: mErr } = await db.from('measurements').insert({
+            const measurementRows = pair.values.map((val, idx) => ({
               session_id: sRow.id,
               patient_id: pRow.id,
-              measurement_no: 1,
+              measurement_no: idx + 1, // 1 = Gerakan 1, 2 = Gerakan 2
               measured_at: startedAtIso,
               force_value: val,
               heart_rate,
               spo2,
               temperature,
-              raw_payload: { source: 'manual_all_fingers', finger_no: fItem.finger_no, measure_type: type },
-            });
+              raw_payload: {
+                source: 'manual_all_fingers',
+                hand_side: fItem.hand_side,
+                finger_no: fItem.finger_no,
+                measure_type: pair.type,
+                movement_no: idx + 1,
+              },
+            }));
 
+            const { error: mErr } = await db.from('measurements').insert(measurementRows);
             if (mErr) hasError = true;
           }
         }

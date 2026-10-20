@@ -18,7 +18,7 @@ export interface PatientBundle {
   source: 'supabase' | 'dummy';
 }
 
-/** Jika hanya ada 1 titik data (pasien baru 1x input), tambahkan titik 'Awal' agar grafik garis langsung terbentuk */
+/** Jika hanya ada 1 titik data, tambahkan titik 'Awal' agar grafik garis selalu terbentuk */
 function ensureLinePoints(series: PerformanceSummary[]): PerformanceSummary[] {
   if (series.length === 1) {
     return [
@@ -72,7 +72,7 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
     const [sessionsRes, fsRes] = await Promise.all([
       db
         .from('assessment_sessions')
-        .select('id, session_code, measure_type, hand_side, finger_no, started_at, measurements(force_value)')
+        .select('id, session_code, measure_type, hand_side, finger_no, started_at, measurements(measurement_no, force_value)')
         .eq('patient_id', p.id)
         .eq('mode', 'pengukuran')
         .order('started_at', { ascending: true })
@@ -81,8 +81,6 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
     ]);
 
     const sessions = sessionsRes.data ?? [];
-
-    // Cek apakah semua sesi berada di bulan yang sama (misal pasien baru diinput beberapa kali di bulan Okt)
     const distinctMonths = new Set(sessions.map(s => s.started_at?.slice(0, 7)));
     const groupBySessionBatch = distinctMonths.size <= 1;
 
@@ -113,7 +111,7 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
         }
       }
     } else {
-      // Semua sesi masih di bulan yang sama -> tampilkan per sesi input (Sesi 1, Sesi 2, dst.) agar garis grafik langsung terlihat
+      // Semua sesi di bulan yang sama: jika ada Gerakan 1 & Gerakan 2 di dalam sesi, tampilkan titiknya
       for (const side of ['R', 'L'] as HandSide[]) {
         for (const fNo of [1, 2, 3, 4, 5] as FingerNo[]) {
           const flexSessions = sessions.filter(
@@ -124,23 +122,43 @@ export async function getPatientBundle(code: string): Promise<PatientBundle> {
           );
           const maxLen = Math.max(flexSessions.length, extSessions.length);
           const arr: PerformanceSummary[] = [];
+
           for (let i = 0; i < maxLen; i++) {
             const fs = flexSessions[i];
             const es = extSessions[i];
-            const fVals = ((fs?.measurements as { force_value: number }[]) ?? []).map(m => Number(m.force_value ?? 0));
-            const eVals = ((es?.measurements as { force_value: number }[]) ?? []).map(m => Number(m.force_value ?? 0));
-            const fAvg = fVals.length ? +(fVals.reduce((a, b) => a + b, 0) / fVals.length).toFixed(1) : 0;
-            const eAvg = eVals.length ? +(eVals.reduce((a, b) => a + b, 0) / eVals.length).toFixed(1) : 0;
+            const fMeas = ((fs?.measurements as { measurement_no: number; force_value: number }[]) ?? []).sort(
+              (a, b) => (a.measurement_no ?? 1) - (b.measurement_no ?? 1)
+            );
+            const eMeas = ((es?.measurements as { measurement_no: number; force_value: number }[]) ?? []).sort(
+              (a, b) => (a.measurement_no ?? 1) - (b.measurement_no ?? 1)
+            );
             const mName = toMonth((fs || es)?.started_at);
-            const label = maxLen === 1 ? mName : `${mName} #${i + 1}`;
-            arr.push({ month: label, avgFlexion: fAvg, avgExtension: eAvg });
+
+            if (maxLen === 1 && (fMeas.length > 1 || eMeas.length > 1)) {
+              // Tampilkan Gerakan 1 dan Gerakan 2 secara langsung pada grafik
+              const count = Math.max(fMeas.length, eMeas.length);
+              for (let mIdx = 0; mIdx < count; mIdx++) {
+                arr.push({
+                  month: `Gerakan ${mIdx + 1} (${mName})`,
+                  avgFlexion: Number(fMeas[mIdx]?.force_value ?? fMeas[0]?.force_value ?? 0),
+                  avgExtension: Number(eMeas[mIdx]?.force_value ?? eMeas[0]?.force_value ?? 0),
+                });
+              }
+            } else {
+              const fVals = fMeas.map(m => Number(m.force_value ?? 0));
+              const eVals = eMeas.map(m => Number(m.force_value ?? 0));
+              const fAvg = fVals.length ? +(fVals.reduce((a, b) => a + b, 0) / fVals.length).toFixed(1) : 0;
+              const eAvg = eVals.length ? +(eVals.reduce((a, b) => a + b, 0) / eVals.length).toFixed(1) : 0;
+              const label = maxLen === 1 ? mName : `${mName} #${i + 1}`;
+              arr.push({ month: label, avgFlexion: fAvg, avgExtension: eAvg });
+            }
           }
           fingers[side][fNo] = ensureLinePoints(arr);
         }
       }
     }
 
-    // Hitung grafik rata-rata bulanan / sesi dari seluruh jari
+    // Hitung grafik bulanan / sesi dari seluruh jari
     const monthlyMap = new Map<string, { flex: number[]; ext: number[] }>();
     (['R', 'L'] as HandSide[]).forEach(side => {
       ([1, 2, 3, 4, 5] as FingerNo[]).forEach(fNo => {
